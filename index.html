@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simple Message dApp</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <img src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'><polygon points='30,2 56,30 30,58 4,30' fill='%23627eea'/></svg>" alt="Diamond logo" width="60" height="60">
+    <h1>Simple Message dApp</h1>
+    <p>A small decentralized app running on the Sepolia testnet.</p>
+  </header>
+
+  <main>
+    <section>
+      <h2>1. Connect Wallet</h2>
+      <button id="connectBtn">Connect MetaMask</button>
+      <p>Status: <span id="status">Not connected</span></p>
+      <p>Account: <span id="account">-</span></p>
+    </section>
+
+    <section>
+      <h2>2. Read from Contract</h2>
+      <button id="readBtn">Get Message</button>
+      <button id="countBtn">Get Change Count</button>
+      <p>Message: <strong id="message">-</strong></p>
+      <p>Times changed: <strong id="count">-</strong></p>
+    </section>
+
+    <section>
+      <h2>3. Write to Contract</h2>
+      <input id="newMessage" type="text" placeholder="Type a new message">
+      <button id="writeBtn">Save On-Chain</button>
+      <p id="txResult">Transaction results will appear here.</p>
+    </section>
+
+    <section>
+      <h3>Helpful Links</h3>
+      <ul>
+        <li><a href="https://metamask.io" target="_blank">MetaMask Wallet</a></li>
+        <li><a href="https://sepolia.etherscan.io" target="_blank">Sepolia Etherscan</a></li>
+      </ul>
+    </section>
+  </main>
+
+  <script>
+    // ==== PUT YOUR DEPLOYED CONTRACT ADDRESS HERE ====
+    const CONTRACT_ADDRESS = "0x506db2566a0340b388D5F975d5308e2c2FadDdc0";
+
+    // Only the functions the frontend uses (human-readable ABI)
+    const ABI = [
+      "function setMessage(string _newMessage)",
+      "function getMessage() view returns (string)",
+      "function getCount() view returns (uint256)"
+    ];
+
+    const SEPOLIA_CHAIN_ID = 11155111;
+    let provider, signer, contract;
+
+    const $ = (id) => document.getElementById(id);
+
+    // Connect MetaMask and set up the contract
+    async function connectWallet() {
+      if (!window.ethereum) {
+        alert("Please install MetaMask first.");
+        return;
+      }
+      try {
+        provider = new ethers.BrowserProvider(window.ethereum);
+        await provider.send("eth_requestAccounts", []);
+        signer = await provider.getSigner();
+
+        const network = await provider.getNetwork();
+        if (Number(network.chainId) !== SEPOLIA_CHAIN_ID) {
+          alert("Please switch MetaMask to the Sepolia test network.");
+        }
+
+        contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+        $("account").textContent = await signer.getAddress();
+        $("status").textContent = "Connected";
+      } catch (err) {
+        console.error(err);
+        $("status").textContent = "Connection failed";
+      }
+    }
+
+    function requireConnection() {
+      if (!contract) {
+        alert("Connect your wallet first.");
+        return false;
+      }
+      return true;
+    }
+
+    // READ: get the message
+    async function readMessage() {
+      if (!requireConnection()) return;
+      try {
+        $("message").textContent = await contract.getMessage();
+      } catch (err) {
+        console.error(err);
+        alert("Could not read message. Check the contract address.");
+      }
+    }
+
+    // READ: get the change count
+    async function readCount() {
+      if (!requireConnection()) return;
+      try {
+        const count = await contract.getCount();
+        $("count").textContent = count.toString();
+      } catch (err) {
+        console.error(err);
+        alert("Could not read count.");
+      }
+    }
+
+    // WRITE: send a transaction to change the message
+    async function writeMessage() {
+      if (!requireConnection()) return;
+      const text = $("newMessage").value.trim();
+      if (!text) {
+        alert("Please type a message first.");
+        return;
+      }
+      try {
+        $("txResult").textContent = "Waiting for MetaMask confirmation...";
+        const tx = await contract.setMessage(text);
+        $("txResult").textContent = "Transaction sent. Waiting for confirmation...";
+        const receipt = await tx.wait();
+        $("txResult").innerHTML =
+          "Success! Block " + receipt.blockNumber +
+          ". <a href='https://sepolia.etherscan.io/tx/" + tx.hash +
+          "' target='_blank'>View transaction</a>";
+        $("newMessage").value = "";
+      } catch (err) {
+        console.error(err);
+        $("txResult").textContent = "Transaction failed or was rejected.";
+      }
+    }
+
+    $("connectBtn").addEventListener("click", connectWallet);
+    $("readBtn").addEventListener("click", readMessage);
+    $("countBtn").addEventListener("click", readCount);
+    $("writeBtn").addEventListener("click", writeMessage);
+  </script>
+</body>
+</html>
